@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Flow Entropy Monitor</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #e0e0e0;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(102, 126, 234, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(118, 75, 162, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header {
+            background: rgba(30, 30, 50, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%, #f093fb 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: 700;
+            text-shadow: 0 0 30px rgba(102, 126, 234, 0.3);
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .control-group label {
+            font-size: 0.9em;
+            font-weight: 600;
+            color: #555;
+        }
+
+        input, select {
+            padding: 10px 15px;
+            border: 2px solid rgba(102, 126, 234, 0.3);
+            border-radius: 10px;
+            font-size: 1em;
+            transition: all 0.3s;
+            background: rgba(20, 20, 35, 0.8);
+            color: #e0e0e0;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2), 0 0 20px rgba(102, 126, 234, 0.3);
+            background: rgba(30, 30, 50, 0.9);
+        }
+
+        input::placeholder {
+            color: rgba(224, 224, 224, 0.5);
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+
+        .btn-start {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-start:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-start:active {
+            transform: translateY(0);
+        }
+
+        .btn-stop {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        .btn-stop:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(245, 87, 108, 0.4);
+        }
+
+        .btn-stop:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            background: rgba(20, 20, 35, 0.8);
+            border-radius: 10px;
+            font-weight: 600;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+            color: #e0e0e0;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #4caf50;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.disconnected {
+            background: #f44336;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .alerts-container {
+            background: rgba(30, 30, 50, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1);
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+        }
+
+        .alerts-container h2 {
+            margin-bottom: 15px;
+            color: #e0e0e0;
+            font-size: 1.5em;
+        }
+
+        .alert {
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 10px;
+            border-left: 5px solid;
+            animation: slideIn 0.3s ease-out;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .alert.spike {
+            background: rgba(255, 193, 7, 0.2);
+            border-color: #ffc107;
+            color: #ffc107;
+        }
+
+        .alert.drop {
+            background: rgba(220, 53, 69, 0.2);
+            border-color: #dc3545;
+            color: #f5576c;
+        }
+
+        .alert-info {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .alert-flow {
+            font-weight: 700;
+            font-size: 1.1em;
+        }
+
+        .alert-details {
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 20px;
+        }
+
+        .chart-card {
+            background: rgba(30, 30, 50, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+        }
+
+        .chart-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(102, 126, 234, 0.3), 0 0 0 1px rgba(102, 126, 234, 0.4);
+            border-color: rgba(102, 126, 234, 0.5);
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .chart-title {
+            font-size: 1.3em;
+            font-weight: 700;
+            color: #e0e0e0;
+        }
+
+        .chart-value {
+            font-size: 2em;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: rgba(224, 224, 224, 0.6);
+        }
+
+        .empty-state h3 {
+            font-size: 1.5em;
+            margin-bottom: 10px;
+            color: rgba(224, 224, 224, 0.8);
+        }
+
+        /* Scrollbar styling */
+        .alerts-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .alerts-container::-webkit-scrollbar-track {
+            background: rgba(20, 20, 35, 0.5);
+            border-radius: 10px;
+        }
+
+        .alerts-container::-webkit-scrollbar-thumb {
+            background: rgba(102, 126, 234, 0.5);
+            border-radius: 10px;
+        }
+
+        .alerts-container::-webkit-scrollbar-thumb:hover {
+            background: rgba(102, 126, 234, 0.7);
+        }
+
+        .logs-container {
+            background: rgba(30, 30, 50, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(102, 126, 234, 0.2);
+        }
+
+        .logs-container h2 {
+            margin-bottom: 15px;
+            color: #e0e0e0;
+            font-size: 1.5em;
+        }
+
+        .logs-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .log-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: rgba(20, 20, 35, 0.6);
+            border-radius: 10px;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+            transition: all 0.3s;
+        }
+
+        .log-item:hover {
+            background: rgba(30, 30, 50, 0.8);
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+        }
+
+        .log-info {
+            flex: 1;
+        }
+
+        .log-filename {
+            font-weight: 600;
+            color: #e0e0e0;
+            margin-bottom: 5px;
+        }
+
+        .log-meta {
+            font-size: 0.85em;
+            color: rgba(224, 224, 224, 0.6);
+        }
+
+        .log-download-btn {
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .log-download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-quit {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-quit:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(245, 87, 108, 0.4);
+        }
+
+        /* Legal Warning Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        }
+
+        .modal-content {
+            background: rgba(30, 30, 50, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 600px;
+            margin: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            border: 2px solid rgba(102, 126, 234, 0.3);
+            color: #e0e0e0;
+        }
+
+        .modal-content h2 {
+            color: #f5576c;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+
+        .modal-content h3 {
+            color: #ffc107;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        .modal-content p {
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+
+        .modal-content ul {
+            margin-left: 20px;
+            margin-bottom: 20px;
+        }
+
+        .modal-content li {
+            margin-bottom: 8px;
+            line-height: 1.5;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+        }
+
+        .modal-btn {
+            flex: 1;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .modal-btn-accept {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .modal-btn-accept:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .modal-btn-decline {
+            background: rgba(100, 100, 100, 0.3);
+            color: #e0e0e0;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .modal-btn-decline:hover {
+            background: rgba(150, 150, 150, 0.3);
+        }
+
+        .control-group label {
+            font-size: 0.9em;
+            font-weight: 600;
+            color: rgba(224, 224, 224, 0.9);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌐 Network Flow Entropy Monitor</h1>
+            <div class="controls">
+                <div class="control-group">
+                    <label>Top N Flows</label>
+                    <select id="topN">
+                        <option value="5">Top 5</option>
+                        <option value="10" selected>Top 10</option>
+                        <option value="20">Top 20</option>
+                        <option value="50">Top 50</option>
+                        <option value="999">All</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>Filter by Protocol</label>
+                    <select id="protocolFilter">
+                        <option value="all">All Protocols</option>
+                        <option value="TCP">TCP</option>
+                        <option value="UDP">UDP</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>Search Flow</label>
+                    <input type="text" id="flowSearch" placeholder="IP address...">
+                </div>
+                <div class="control-group">
+                    <label>Network Interface</label>
+                    <select id="interfaceSelect">
+                        <option value="">Select interface...</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>&nbsp;</label>
+                    <button id="startCaptureBtn" style="display: none;" class="btn btn-start">Start Capture</button>
+                    <button id="stopCaptureBtn" style="display: none;" class="btn btn-stop">Stop Capture</button>
+                </div>
+                <div class="status">
+                    <div class="status-indicator" id="statusIndicator"></div>
+                    <span id="statusText">Connecting...</span>
+                </div>
+                <div class="control-group">
+                    <label>&nbsp;</label>
+                    <button id="quitBtn" class="btn-quit">Quit Server</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Legal Warning Modal -->
+        <div id="legalModal" class="modal-overlay">
+            <div class="modal-content">
+                <h2>⚠️ Legal Warning: Network Packet Capture</h2>
+                <p><strong>IMPORTANT:</strong> This tool captures network traffic. Please read and understand the following legal information before proceeding.</p>
+                
+                <h3>United States Federal Law (18 U.S.C. § 2511)</h3>
+                <p>The interception of electronic communications is generally prohibited under federal wiretap laws. However, there are exceptions:</p>
+                <ul>
+                    <li><strong>Authorized Monitoring:</strong> You may only monitor networks you own or have explicit written authorization to monitor.</li>
+                    <li><strong>Your Own Network:</strong> Monitoring your own network traffic is generally legal.</li>
+                    <li><strong>Consent Required:</strong> Monitoring networks you don't own without authorization is illegal and can result in criminal penalties.</li>
+                </ul>
+
+                <h3>State Laws</h3>
+                <p>Many states have additional laws regarding electronic surveillance. Some states require all-party consent for monitoring communications.</p>
+
+                <h3>Best Practices</h3>
+                <ul>
+                    <li>Only use this tool on networks you own or have explicit permission to monitor</li>
+                    <li>Obtain written authorization before monitoring any network</li>
+                    <li>Respect privacy and confidentiality</li>
+                    <li>Comply with your organization's security policies</li>
+                    <li>Consult with legal counsel if unsure about legality</li>
+                </ul>
+
+                <p><strong>By clicking "I Understand and Accept", you acknowledge that:</strong></p>
+                <ul>
+                    <li>You have read and understood the legal warnings above</li>
+                    <li>You will only use this tool on networks you own or have authorization to monitor</li>
+                    <li>You understand that unauthorized network monitoring may be illegal</li>
+                    <li>You accept full legal responsibility for your use of this tool</li>
+                </ul>
+
+                <div class="modal-buttons">
+                    <button class="modal-btn modal-btn-decline" onclick="declineLegal()">Decline & Exit</button>
+                    <button class="modal-btn modal-btn-accept" onclick="acceptLegal()">I Understand and Accept</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="alerts-container" id="alertsContainer" style="display: none;">
+            <h2>🚨 Network Anomaly Alerts</h2>
+            <div id="alertsList"></div>
+        </div>
+
+        <div class="logs-container" id="logsContainer">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h2>📥 Log Files</h2>
+                <button id="refreshLogsBtn" class="btn btn-start" style="padding: 8px 15px; font-size: 0.9em;">Refresh</button>
+            </div>
+            <div id="logsList" class="logs-list">
+                <div class="empty-state" style="padding: 20px;">
+                    <p>No log files available. Start capturing to generate logs.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="charts-grid" id="chartsGrid">
+            <div class="empty-state">
+                <h3>Ready to capture</h3>
+                <p>Select a network interface and click "Start Capture" to begin monitoring</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let charts = {};
+        let allFlows = {};
+        let ws = null;
+        let reconnectTimeout = null;
+
+        const topNSelect = document.getElementById('topN');
+        const protocolFilter = document.getElementById('protocolFilter');
+        const flowSearch = document.getElementById('flowSearch');
+        const interfaceSelect = document.getElementById('interfaceSelect');
+        const startCaptureBtn = document.getElementById('startCaptureBtn');
+        const stopCaptureBtn = document.getElementById('stopCaptureBtn');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const statusText = document.getElementById('statusText');
+        const chartsGrid = document.getElementById('chartsGrid');
+        const alertsContainer = document.getElementById('alertsContainer');
+        const alertsList = document.getElementById('alertsList');
+        const logsContainer = document.getElementById('logsContainer');
+        const logsList = document.getElementById('logsList');
+        const refreshLogsBtn = document.getElementById('refreshLogsBtn');
+        
+        let currentInterface = null;
+        let isCapturing = false;
+        let isChangingInterface = false;
+
+        async function loadInterfaces() {
+            try {
+                const response = await fetch('/api/interfaces');
+                const data = await response.json();
+                
+                interfaceSelect.innerHTML = '<option value="">Select interface...</option>';
+                data.interfaces.forEach(iface => {
+                    const option = document.createElement('option');
+                    // Handle both old format (string) and new format (object with name and ip)
+                    const ifaceName = typeof iface === 'string' ? iface : iface.name;
+                    const ifaceIp = typeof iface === 'object' ? iface.ip : null;
+                    
+                    option.value = ifaceName;
+                    
+                    // Format display text with IP address if available
+                    if (ifaceIp) {
+                        option.textContent = `${ifaceName} (${ifaceIp})`;
+                    } else {
+                        option.textContent = ifaceName;
+                    }
+                    
+                    if (ifaceName === data.current) {
+                        option.selected = true;
+                        currentInterface = ifaceName;
+                        isCapturing = true;
+                        startCaptureBtn.style.display = 'none';
+                        stopCaptureBtn.style.display = 'block';
+                        interfaceSelect.disabled = true;
+                    }
+                    interfaceSelect.appendChild(option);
+                });
+                
+                // If no current interface, show start button when one is selected
+                if (!data.current) {
+                    interfaceSelect.addEventListener('change', function handler(e) {
+                        if (e.target.value && !isCapturing) {
+                            startCaptureBtn.style.display = 'block';
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to load interfaces:', error);
+                interfaceSelect.innerHTML = '<option value="">Error loading interfaces</option>';
+            }
+        }
+
+        async function startCapture(interface) {
+            if (!interface) {
+                alert('Please select a network interface first');
+                return;
+            }
+            
+            if (isChangingInterface) {
+                return;
+            }
+            
+            isChangingInterface = true;
+            startCaptureBtn.disabled = true;
+            statusText.textContent = 'Starting capture...';
+            
+            try {
+                const response = await fetch('/api/capture/start', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ interface: interface })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    currentInterface = data.interface;
+                    isCapturing = true;
+                    statusText.textContent = `Capturing on ${data.interface}`;
+                    
+                    // Update UI
+                    startCaptureBtn.style.display = 'none';
+                    stopCaptureBtn.style.display = 'block';
+                    interfaceSelect.disabled = true;
+                    
+                    // Clear all charts when starting new capture
+                    Object.values(charts).forEach(chart => chart.destroy());
+                    charts = {};
+                    allFlows = {};
+                    chartsGrid.innerHTML = '<div class="empty-state"><h3>Starting capture...</h3></div>';
+                } else {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to start capture');
+                }
+            } catch (error) {
+                console.error('Failed to start capture:', error);
+                statusText.textContent = `Error: ${error.message}`;
+                alert(`Failed to start capture: ${error.message}\n\nNote: Packet capture requires root permissions (run with sudo)`);
+            } finally {
+                isChangingInterface = false;
+                startCaptureBtn.disabled = false;
+            }
+        }
+
+        async function stopCapture() {
+            if (isChangingInterface) {
+                return;
+            }
+            
+            isChangingInterface = true;
+            stopCaptureBtn.disabled = true;
+            statusText.textContent = 'Stopping capture...';
+            
+            try {
+                const response = await fetch('/api/capture/stop', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    isCapturing = false;
+                    currentInterface = null;
+                    statusText.textContent = 'Capture stopped';
+                    
+                    // Update UI
+                    startCaptureBtn.style.display = 'block';
+                    stopCaptureBtn.style.display = 'none';
+                    interfaceSelect.disabled = false;
+                    interfaceSelect.value = '';
+                } else {
+                    throw new Error('Failed to stop capture');
+                }
+            } catch (error) {
+                console.error('Failed to stop capture:', error);
+                statusText.textContent = `Error: ${error.message}`;
+            } finally {
+                isChangingInterface = false;
+                stopCaptureBtn.disabled = false;
+            }
+        }
+
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                statusIndicator.classList.remove('disconnected');
+                statusText.textContent = 'Connected';
+                if (reconnectTimeout) {
+                    clearTimeout(reconnectTimeout);
+                    reconnectTimeout = null;
+                }
+                // Load interfaces when connected
+                loadInterfaces();
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                updateCharts(data);
+                updateAlerts(data.alerts || []);
+                
+                // Update interface display if it changed
+                if (data.interface && data.interface !== currentInterface) {
+                    currentInterface = data.interface;
+                    interfaceSelect.value = data.interface;
+                    if (data.interface && !isCapturing) {
+                        isCapturing = true;
+                        startCaptureBtn.style.display = 'none';
+                        stopCaptureBtn.style.display = 'block';
+                        interfaceSelect.disabled = true;
+                    }
+                }
+            };
+
+            ws.onerror = () => {
+                statusIndicator.classList.add('disconnected');
+                statusText.textContent = 'Connection Error';
+            };
+
+            ws.onclose = () => {
+                statusIndicator.classList.add('disconnected');
+                statusText.textContent = 'Disconnected - Reconnecting...';
+                reconnectTimeout = setTimeout(connectWebSocket, 3000);
+            };
+        }
+
+        function updateCharts(data) {
+            allFlows = data.entropy_history || {};
+            applyFilters();
+        }
+
+        function applyFilters() {
+            const topN = parseInt(topNSelect.value);
+            const protocol = protocolFilter.value;
+            const searchTerm = flowSearch.value.toLowerCase();
+
+            // Filter flows
+            let filteredFlows = Object.entries(allFlows)
+                .filter(([flowName, flowData]) => {
+                    // Protocol filter
+                    if (protocol !== 'all' && !flowName.includes(`(${protocol})`)) {
+                        return false;
+                    }
+                    // Search filter
+                    if (searchTerm && !flowName.toLowerCase().includes(searchTerm)) {
+                        return false;
+                    }
+                    return true;
+                })
+                .sort((a, b) => b[1].current - a[1].current)
+                .slice(0, topN);
+
+            // Remove charts that are no longer in the filtered list
+            const activeFlowNames = new Set(filteredFlows.map(([name]) => name));
+            Object.keys(charts).forEach(flowName => {
+                if (!activeFlowNames.has(flowName)) {
+                    charts[flowName].destroy();
+                    delete charts[flowName];
+                }
+            });
+
+            // Update or create charts
+            if (filteredFlows.length === 0) {
+                chartsGrid.innerHTML = '<div class="empty-state"><h3>No flows match the current filters</h3></div>';
+                return;
+            }
+
+            chartsGrid.innerHTML = '';
+            filteredFlows.forEach(([flowName, flowData]) => {
+                createOrUpdateChart(flowName, flowData);
+            });
+        }
+
+        function createOrUpdateChart(flowName, flowData) {
+            const chartId = `chart-${flowName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+            
+            if (!charts[flowName]) {
+                // Create new chart card
+                const card = document.createElement('div');
+                card.className = 'chart-card';
+                card.innerHTML = `
+                    <div class="chart-header">
+                        <div class="chart-title">${flowName}</div>
+                        <div class="chart-value" id="${chartId}-value">${flowData.current.toFixed(3)}</div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="${chartId}"></canvas>
+                    </div>
+                `;
+                chartsGrid.appendChild(card);
+
+                // Create Chart.js instance
+                const ctx = document.getElementById(chartId).getContext('2d');
+                charts[flowName] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Entropy',
+                            data: [],
+                            borderColor: 'rgb(102, 126, 234)',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 0,
+                            pointHoverRadius: 5
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                ticks: {
+                                    precision: 2,
+                                    color: 'rgba(224, 224, 224, 0.8)'
+                                }
+                            },
+                            x: {
+                                display: false,
+                                grid: {
+                                    display: false
+                                }
+                            }
+                        },
+                        animation: {
+                            duration: 0
+                        }
+                    }
+                });
+            }
+
+            // Update chart data
+            const history = flowData.history || [];
+            const chart = charts[flowName];
+            const maxPoints = 50; // Show last 50 points
+            
+            chart.data.labels = Array.from({ length: Math.min(history.length, maxPoints) }, (_, i) => '');
+            chart.data.datasets[0].data = history.slice(-maxPoints);
+            chart.update('none');
+
+            // Update current value
+            document.getElementById(`${chartId}-value`).textContent = flowData.current.toFixed(3);
+        }
+
+        function updateAlerts(alerts) {
+            if (alerts.length === 0) {
+                alertsContainer.style.display = 'none';
+                return;
+            }
+
+            alertsContainer.style.display = 'block';
+            alertsList.innerHTML = '';
+
+            alerts.forEach(alert => {
+                const alertDiv = document.createElement('div');
+                alertDiv.className = `alert ${alert.type.toLowerCase()}`;
+                alertDiv.innerHTML = `
+                    <div class="alert-info">
+                        <div class="alert-flow">${alert.flow}</div>
+                        <div class="alert-details">
+                            ${alert.type}: Entropy ${alert.entropy} (${alert.change}% change from ${alert.previous_avg.toFixed(3)})
+                        </div>
+                    </div>
+                `;
+                alertsList.appendChild(alertDiv);
+            });
+        }
+
+        async function loadLogs() {
+            try {
+                const response = await fetch('/api/logs');
+                const data = await response.json();
+                
+                if (data.error) {
+                    logsList.innerHTML = `<div class="empty-state"><p>Error loading logs: ${data.error}</p></div>`;
+                    return;
+                }
+                
+                if (data.logs && data.logs.length > 0) {
+                    logsList.innerHTML = '';
+                    data.logs.forEach(log => {
+                        const logItem = document.createElement('div');
+                        logItem.className = 'log-item';
+                        
+                        const sizeKB = (log.size / 1024).toFixed(2);
+                        const date = new Date(log.modified);
+                        const dateStr = date.toLocaleString();
+                        
+                        logItem.innerHTML = `
+                            <div class="log-info">
+                                <div class="log-filename">${log.filename}</div>
+                                <div class="log-meta">Size: ${sizeKB} KB | Modified: ${dateStr}</div>
+                            </div>
+                            <button class="log-download-btn" onclick="downloadLog('${log.filename}')">Download</button>
+                        `;
+                        logsList.appendChild(logItem);
+                    });
+                } else {
+                    logsList.innerHTML = '<div class="empty-state" style="padding: 20px;"><p>No log files available. Start capturing to generate logs.</p></div>';
+                }
+            } catch (error) {
+                console.error('Failed to load logs:', error);
+                logsList.innerHTML = '<div class="empty-state" style="padding: 20px;"><p>Error loading log files.</p></div>';
+            }
+        }
+
+        function downloadLog(filename) {
+            window.location.href = `/api/logs/download?file=${encodeURIComponent(filename)}`;
+        }
+
+        // Event listeners
+        topNSelect.addEventListener('change', applyFilters);
+        protocolFilter.addEventListener('change', applyFilters);
+        flowSearch.addEventListener('input', applyFilters);
+        interfaceSelect.addEventListener('change', (e) => {
+            if (e.target.value && !isCapturing) {
+                // Show start button when interface is selected
+                startCaptureBtn.style.display = 'block';
+            } else if (!e.target.value) {
+                startCaptureBtn.style.display = 'none';
+            }
+        });
+        startCaptureBtn.addEventListener('click', () => {
+            if (interfaceSelect.value) {
+                startCapture(interfaceSelect.value);
+            }
+        });
+        stopCaptureBtn.addEventListener('click', stopCapture);
+        refreshLogsBtn.addEventListener('click', loadLogs);
+
+        // Legal warning functions
+        function acceptLegal() {
+            document.getElementById('legalModal').style.display = 'none';
+            localStorage.setItem('legalWarningAccepted', 'true');
+            connectWebSocket();
+            loadLogs();
+        }
+
+        function declineLegal() {
+            alert('You must accept the legal warning to use this tool. The page will now close.');
+            window.close();
+        }
+
+        // Quit server function
+        async function quitServer() {
+            if (!confirm('Are you sure you want to quit the server? This will stop all capture and close the application.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/quit', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    alert('Server is shutting down. This page will close shortly.');
+                    setTimeout(() => {
+                        window.close();
+                    }, 2000);
+                } else {
+                    throw new Error('Failed to quit server');
+                }
+            } catch (error) {
+                console.error('Failed to quit server:', error);
+                alert('Failed to quit server. You may need to stop it manually.');
+            }
+        }
+
+        // Check if legal warning was already accepted
+        if (localStorage.getItem('legalWarningAccepted') === 'true') {
+            document.getElementById('legalModal').style.display = 'none';
+            connectWebSocket();
+            loadLogs();
+        } else {
+            document.getElementById('legalModal').style.display = 'flex';
+        }
+
+        // Event listener for quit button
+        document.getElementById('quitBtn').addEventListener('click', quitServer);
+    </script>
+</body>
+</html>
